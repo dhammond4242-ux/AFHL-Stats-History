@@ -13,13 +13,8 @@
   * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   body { background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
   .container { max-width: 1150px; margin: 0 auto; }
-  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; border-bottom: 2px solid var(--border); padding-bottom: 20px; margin-bottom: 20px; }
-  h1 { margin: 0; font-size: 1.7rem; color: var(--accent); }
-  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  input, button { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.95rem; }
-  input { background: var(--card); color: var(--text); width: 110px; }
-  button { background: var(--accent); color: #0f172a; font-weight: 700; cursor: pointer; border: none; }
-  button:hover { opacity: 0.9; }
+  header { border-bottom: 2px solid var(--border); padding-bottom: 18px; margin-bottom: 20px; }
+  h1 { margin: 0 0 6px 0; font-size: 1.8rem; color: var(--accent); }
   .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
   .tab { background: var(--card); color: var(--muted); padding: 12px 16px; border-radius: 8px; cursor: pointer; font-weight: 700; border: 1px solid var(--border); }
   .tab.active { background: var(--accent); color: #0f172a; border-color: var(--accent); }
@@ -37,35 +32,25 @@
   .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; }
   .win { background: rgba(34,197,94,0.2); color: var(--win); }
   .loss { background: rgba(239,68,68,0.2); color: var(--loss); }
-  #status { margin: 12px 0; padding: 14px; background: rgba(234,179,8,0.15); border: 1px solid var(--gold); border-radius: 8px; color: var(--gold); font-weight: 700; font-size: 0.95rem; }
   .alias-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+  input { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
 </style>
 </head>
 <body>
 <div class="container">
   <header>
-    <div>
-      <h1 id="leagueTitle">🏈 League of Gentlemen (#152084)</h1>
-      <div style="color:var(--muted); font-size:0.9rem;">All-Time Fleaflicker Stats, Records & Matchup History</div>
-    </div>
-    <div class="controls">
-      <input type="text" id="leagueId" value="152084">
-      <input type="number" id="startYear" value="2014">
-      <input type="number" id="endYear" value="2026">
-      <button id="loadBtn" type="button">Refresh Stats</button>
-    </div>
+    <h1 id="leagueTitle">🏈 League History Vault</h1>
+    <div id="subtitle" style="color:var(--muted); font-size:0.95rem;">Loading compiled league history...</div>
   </header>
 
-  <div id="status">⏳ Page loaded! Starting connection to Fleaflicker...</div>
-
   <div class="tabs">
-    <div class="tab active" data-tab="standings">🏆 All-Time Wins & Losses</div>
-    <div class="tab" data-tab="luck">🍀 Luck Rating</div>
-    <div class="tab" data-tab="h2h">⚔️ Head-to-Head Record</div>
-    <div class="tab" data-tab="records">📜 Fun Record Book</div>
-    <div class="tab" data-tab="seasons">📅 Past Champions</div>
-    <div class="tab" data-tab="drafts">🎓 1st Round Draft Picks</div>
-    <div class="tab" data-tab="aliases">👤 Fix Manager Names</div>
+    <div class="tab active" onclick="openTab(this, 'standings')">🏆 All-Time Wins & Losses</div>
+    <div class="tab" onclick="openTab(this, 'luck')">🍀 Luck Rating</div>
+    <div class="tab" onclick="openTab(this, 'h2h')">⚔️ Head-to-Head Record</div>
+    <div class="tab" onclick="openTab(this, 'records')">📜 Fun Record Book</div>
+    <div class="tab" onclick="openTab(this, 'seasons')">📅 Past Champions</div>
+    <div class="tab" onclick="openTab(this, 'drafts')">🎓 1st Round Draft Picks</div>
+    <div class="tab" onclick="openTab(this, 'aliases')">👤 Fix Manager Names</div>
   </div>
 
   <div id="standings" class="panel active"></div>
@@ -78,166 +63,136 @@
 </div>
 
 <script>
-var API_BASE = "https://fleaflicker.com";
-var RAW_GAMES = [];
-var RAW_SEASONS = [];
-var RAW_DRAFTS = [];
-var ALIASES = {};
+let DATA = null;
+let ALIASES = JSON.parse(localStorage.getItem("ff_aliases_152084") || "{}");
 
-try {
-  ALIASES = JSON.parse(localStorage.getItem("ff_aliases_152084") || "{}");
-} catch (e) {
-  ALIASES = {};
+function openTab(el, id) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById(id).classList.add("active");
 }
 
-function setStatus(msg) {
-  var el = document.getElementById("status");
-  if (el) el.innerText = msg;
+function mgr(name) {
+  return ALIASES[name] || name;
 }
 
-var tabButtons = document.querySelectorAll(".tab");
-for (var t = 0; t < tabButtons.length; t++) {
-  tabButtons[t].addEventListener("click", function() {
-    var allTabs = document.querySelectorAll(".tab");
-    var allPanels = document.querySelectorAll(".panel");
-    for (var i = 0; i < allTabs.length; i++) allTabs[i].classList.remove("active");
-    for (var j = 0; j < allPanels.length; j++) allPanels[j].classList.remove("active");
-    this.classList.add("active");
-    var targetId = this.getAttribute("data-tab");
-    document.getElementById(targetId).classList.add("active");
-  });
-}
-
-document.getElementById("loadBtn").addEventListener("click", function() {
-  loadLeagueData();
-});
-
-function getManagerName(team) {
-  if (!team) return "Unknown";
-  var raw = team.name || "Unknown";
-  if (team.owners && team.owners.length > 0 && team.owners[0].displayName) {
-    raw = team.owners[0].displayName;
-  }
-  return ALIASES[raw] || raw;
-}
-
-async function fetchWithTimeout(url, ms) {
-  var controller = new AbortController();
-  var timer = setTimeout(function() { controller.abort(); }, ms);
-  try {
-    var res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    return res;
-  } catch (e) {
-    clearTimeout(timer);
-    return null;
-  }
-}
-
-async function fetchFleaflicker(endpoint) {
-  var target = API_BASE + "/" + endpoint;
-  var proxies = [
-    "https://corsproxy.io" + encodeURIComponent(target),
-    "https://allorigins.win" + encodeURIComponent(target),
-    target
-  ];
-
-  for (var i = 0; i < proxies.length; i++) {
-    var res = await fetchWithTimeout(proxies[i], 4500);
-    if (res && res.ok) {
-      try {
-        var data = await res.json();
-        if (data) return data;
-      } catch (e) {}
-    }
-  }
-  return null;
-}
-
-async function loadLeagueData() {
-  var leagueId = document.getElementById("leagueId").value.trim().replace(/\D/g, "") || "152084";
-  var startYear = parseInt(document.getElementById("startYear").value, 10) || 2014;
-  var endYear = parseInt(document.getElementById("endYear").value, 10) || 2026;
-
-  setStatus("⏳ Connecting to Fleaflicker for League #" + leagueId + "...");
-  RAW_GAMES = [];
-  RAW_SEASONS = [];
-  RAW_DRAFTS = [];
-
-  for (var yr = startYear; yr <= endYear; yr++) {
-    setStatus("⏳ Loading " + yr + " season (" + (yr - startYear + 1) + " of " + (endYear - startYear + 1) + ")...");
-    var standings = await fetchFleaflicker("FetchLeagueStandings?sport=NFL&league_id=" + leagueId + "&season=" + yr);
-    if (!standings || !standings.divisions) continue;
-
-    if (standings.league && standings.league.name) {
-      document.getElementById("leagueTitle").innerText = "🏈 " + standings.league.name + " (#" + leagueId + ")";
-      document.title = standings.league.name + " — History Vault";
-    }
-
-    var teams = [];
-    for (var d = 0; d < standings.divisions.length; d++) {
-      var div = standings.divisions[d];
-      if (div.teams) {
-        for (var tm = 0; tm < div.teams.length; tm++) {
-          teams.push(div.teams[tm]);
-        }
-      }
-    }
-    RAW_SEASONS.push({ year: yr, teams: teams });
-
-    for (var batchStart = 1; batchStart <= 18; batchStart += 4) {
-      var promises = [];
-      for (var wk = batchStart; wk < batchStart + 4 && wk <= 18; wk++) {
-        (function(weekNum) {
-          promises.push(
-            fetchFleaflicker("FetchLeagueScoreboard?sport=NFL&league_id=" + leagueId + "&season=" + yr + "&scoring_period=" + weekNum)
-              .then(function(sb) { return { wk: weekNum, sb: sb }; })
-          );
-        })(wk);
-      }
-      var results = await Promise.all(promises);
-      var anyGamesInBatch = false;
-      for (var r = 0; r < results.length; r++) {
-        var sb = results[r].sb;
-        if (sb && sb.games && sb.games.length > 0) {
-          anyGamesInBatch = true;
-          for (var gIdx = 0; gIdx < sb.games.length; gIdx++) {
-            var g = sb.games[gIdx];
-            var hScore = (g.homeScore && g.homeScore.score && g.homeScore.score.value) ? g.homeScore.score.value : 0;
-            var aScore = (g.awayScore && g.awayScore.score && g.awayScore.score.value) ? g.awayScore.score.value : 0;
-            if (g.home && g.away && (hScore > 0 || aScore > 0)) {
-              RAW_GAMES.push({
-                year: yr,
-                week: results[r].wk,
-                home: g.home,
-                away: g.away,
-                homePts: hScore,
-                awayPts: aScore
-              });
-            }
-          }
-        }
-      }
-      if (!anyGamesInBatch && batchStart > 14) break;
-    }
-
-    var draft = await fetchFleaflicker("FetchLeagueDraftBoard?sport=NFL&league_id=" + leagueId + "&season=" + yr);
-    if (draft && draft.rows) {
-      RAW_DRAFTS.push({ year: yr, rows: draft.rows });
-    }
-
+fetch("data.json?v=" + Date.now())
+  .then(r => r.json())
+  .then(json => {
+    DATA = json;
+    document.getElementById("leagueTitle").innerText = "🏈 " + json.leagueName + " (#" + json.leagueId + ")";
+    document.getElementById("subtitle").innerText = json.seasons.length + " Seasons • " + json.games.length + " Total Matchups • Auto-Synced from Fleaflicker";
     renderAll();
-  }
-
-  if (RAW_SEASONS.length === 0) {
-    setStatus("❌ Proxy timed out reaching Fleaflicker. Let me know and we will bake your data directly into the file!");
-    return;
-  }
-
-  setStatus("✅ Finished! Loaded " + RAW_SEASONS.length + " seasons and " + RAW_GAMES.length + " matchups for League of Gentlemen!");
-  renderAll();
-}
+  })
+  .catch(() => {
+    document.getElementById("subtitle").innerText = "❌ Could not find data.json yet. Run the 'Sync Fleaflicker Stats' workflow in your GitHub Actions tab first!";
+  });
 
 function renderAll() {
   renderStandingsAndLuck();
+  renderH2H();
   renderRecords();
+  renderSeasons();
+  renderDrafts();
+  renderAliases();
+}
+
+function renderStandingsAndLuck() {
+  const stats = {};
+  const init = m => { if (!stats[m]) stats[m] = { name: m, w: 0, l: 0, t: 0, pf: 0, pa: 0, apW: 0, apL: 0, titles: 0, seasons: 0 }; };
+
+  DATA.seasons.forEach(s => {
+    s.teams.forEach(tm => {
+      const m = mgr(tm.owner);
+      init(m);
+      stats[m].seasons++;
+      if (tm.rank === 1) stats[m].titles++;
+    });
+  });
+
+  const weeks = {};
+  DATA.games.forEach(g => {
+    const k = g.year + "-" + g.week;
+    if (!weeks[k]) weeks[k] = [];
+    const h = mgr(g.home), a = mgr(g.away);
+    init(h); init(a);
+    stats[h].pf += g.homePts; stats[h].pa += g.awayPts;
+    stats[a].pf += g.awayPts; stats[a].pa += g.homePts;
+    if (g.homePts > g.awayPts) { stats[h].w++; stats[a].l++; }
+    else if (g.awayPts > g.homePts) { stats[a].w++; stats[h].l++; }
+    else { stats[h].t++; stats[a].t++; }
+    weeks[k].push({ m: h, p: g.homePts }, { m: a, p: g.awayPts });
+  });
+
+  Object.values(weeks).forEach(list => {
+    list.forEach(x => list.forEach(y => {
+      if (x.m !== y.m) {
+        if (x.p > y.p) stats[x.m].apW++;
+        else if (x.p < y.p) stats[x.m].apL++;
+      }
+    }));
+  });
+
+  const rows = Object.values(stats).sort((a, b) => (b.w / (b.w + b.l || 1)) - (a.w / (a.w + a.l || 1)));
+
+  let html = "<h2>All-Time Wins, Losses & Points</h2><table><thead><tr><th>Manager</th><th>Seasons</th><th>Titles</th><th>Wins</th><th>Losses</th><th>Win %</th><th>Total Points</th><th>Avg PPG</th></tr></thead><tbody>";
+  rows.forEach(r => {
+    const gp = r.w + r.l + r.t || 1;
+    html += `<tr><td><strong>${r.name}</strong></td><td>${r.seasons}</td><td>${r.titles ? "🏆".repeat(r.titles) : "-"}</td>
+      <td><span class="badge win">${r.w}</span></td><td><span class="badge loss">${r.l}</span></td>
+      <td>${((r.w / gp) * 100).toFixed(1)}%</td><td>${r.pf.toFixed(1)}</td><td>${(r.pf / gp).toFixed(1)}</td></tr>`;
+  });
+  document.getElementById("standings").innerHTML = html + "</tbody></table>";
+
+  const luck = rows.map(r => {
+    const act = r.w / (r.w + r.l || 1);
+    const ap = r.apW / (r.apW + r.apL || 1);
+    return { ...r, act, ap, score: (act - ap) * 100 };
+  }).sort((a, b) => b.score - a.score);
+
+  let lHtml = "<h2>Luck Rating (Schedule Luck)</h2><p style='color:var(--muted);'>Green (+%) means easy schedule luck. Red (-%) means tough schedule luck.</p><table><thead><tr><th>Manager</th><th>Real Win %</th><th>All-Play Record</th><th>Luck Rating</th></tr></thead><tbody>";
+  luck.forEach(r => {
+    const badge = r.score >= 0 ? `<span class="badge win">+${r.score.toFixed(1)}% Lucky</span>` : `<span class="badge loss">${r.score.toFixed(1)}% Unlucky</span>`;
+    lHtml += `<tr><td><strong>${r.name}</strong></td><td>${(r.act * 100).toFixed(1)}%</td><td>${r.apW}-${r.apL} (${(r.ap * 100).toFixed(1)}%)</td><td>${badge}</td></tr>`;
+  });
+  document.getElementById("luck").innerHTML = lHtml + "</tbody></table>";
+}
+
+function renderH2H() {
+  const managers = [...new Set(DATA.games.flatMap(g => [mgr(g.home), mgr(g.away)]))].sort();
+  const mat = {};
+  managers.forEach(a => { mat[a] = {}; managers.forEach(b => mat[a][b] = { w: 0, l: 0 }); });
+  DATA.games.forEach(g => {
+    const h = mgr(g.home), a = mgr(g.away);
+    if (g.homePts > g.awayPts) { mat[h][a].w++; mat[a][h].l++; }
+    else if (g.awayPts > g.homePts) { mat[a][h].w++; mat[h][a].l++; }
+  });
+  let html = "<h2>Head-to-Head Record</h2><table><thead><tr><th>Manager</th>" + managers.map(m => `<th>${m}</th>`).join("") + "</tr></thead><tbody>";
+  managers.forEach(a => {
+    html += `<tr><td><strong>${a}</strong></td>` + managers.map(b => {
+      if (a === b) return "<td style='color:var(--muted)'>—</td>";
+      const r = mat[a][b];
+      const cls = r.w > r.l ? "win" : (r.w < r.l ? "loss" : "");
+      return `<td><span class="badge ${cls}">${r.w}-${r.l}</span></td>`;
+    }).join("") + "</tr>";
+  });
+  document.getElementById("h2h").innerHTML = html + "</tbody></table>";
+}
+
+function renderRecords() {
+  let hi = { pts: -1 }, lo = { pts: 99999 }, blow = { d: -1 }, close = { d: 99999 }, shoot = { t: -1 };
+  DATA.games.forEach(g => {
+    const h = mgr(g.home), a = mgr(g.away);
+    if (g.homePts > hi.pts) hi = { pts: g.homePts, m: h, o: a, y: g.year, w: g.week };
+    if (g.awayPts > hi.pts) hi = { pts: g.awayPts, m: a, o: h, y: g.year, w: g.week };
+    if (g.homePts < lo.pts) lo = { pts: g.homePts, m: h, o: a, y: g.year, w: g.week };
+    if (g.awayPts < lo.pts) lo = { pts: g.awayPts, m: a, o: h, y: g.year, w: g.week };
+    const d = Math.abs(g.homePts - g.awayPts);
+    const win = g.homePts > g.awayPts ? h : a, los = g.homePts > g.awayPts ? a : h;
+    const sc = `${Math.max(g.homePts, g.awayPts).toFixed(2)} - ${Math.min(g.homePts, g.awayPts).toFixed(2)}`;
+    if (d > blow.d) blow = { d, win, los, sc, y: g.year, w: g.week };
+    if (d > 0 && d < close.d) close = { d, win, los, sc, y: g.year, w: g.week };
+    if (g.homePts + g.awayPts > shoot.t) shoot = { t: g.homePts + g.awayPts, h, a, sc: `${g.homePts.toFixed(2)} - ${g.awayPts.toFixed(2)}`, y: g.year, w: g.week };
+  });
+  document.getElementById("records").innerHTML = `<h2>All-Time League Record Book</h2><div class="grid">
