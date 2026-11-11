@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>League #152084 History Vault</title>
+<title>League of Gentlemen (#152084) — History Vault</title>
 <style>
   :root {
     --bg: #0f172a; --card: #1e293b; --border: #334155;
@@ -17,7 +17,7 @@
   h1 { margin: 0; font-size: 1.7rem; color: var(--accent); }
   .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   input, button { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.95rem; }
-  input { background: var(--card); color: var(--text); width: 115px; }
+  input { background: var(--card); color: var(--text); width: 110px; }
   button { background: var(--accent); color: #0f172a; font-weight: 700; cursor: pointer; border: none; }
   button:hover { opacity: 0.9; }
   .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
@@ -37,7 +37,7 @@
   .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; }
   .win { background: rgba(34,197,94,0.2); color: var(--win); }
   .loss { background: rgba(239,68,68,0.2); color: var(--loss); }
-  #status { margin: 12px 0; padding: 12px; background: rgba(234,179,8,0.12); border: 1px solid var(--gold); border-radius: 8px; color: var(--gold); font-weight: 700; font-size: 0.95rem; }
+  #status { margin: 12px 0; padding: 14px; background: rgba(234,179,8,0.15); border: 1px solid var(--gold); border-radius: 8px; color: var(--gold); font-weight: 700; font-size: 0.95rem; }
   .alias-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
 </style>
 </head>
@@ -45,27 +45,27 @@
 <div class="container">
   <header>
     <div>
-      <h1 id="leagueTitle">🏈 League #152084 History Vault</h1>
+      <h1 id="leagueTitle">🏈 League of Gentlemen (#152084)</h1>
       <div style="color:var(--muted); font-size:0.9rem;">All-Time Fleaflicker Stats, Records & Matchup History</div>
     </div>
     <div class="controls">
       <input type="text" id="leagueId" value="152084">
       <input type="number" id="startYear" value="2014">
       <input type="number" id="endYear" value="2026">
-      <button id="loadBtn" type="button" onclick="loadLeagueData()">Refresh Stats</button>
+      <button id="loadBtn" type="button">Refresh Stats</button>
     </div>
   </header>
 
-  <div id="status">Starting up...</div>
+  <div id="status">⏳ Page loaded! Connecting to Fleaflicker now...</div>
 
   <div class="tabs">
-    <div class="tab active" onclick="openTab(this, 'standings')">🏆 All-Time Wins & Losses</div>
-    <div class="tab" onclick="openTab(this, 'luck')">🍀 Luck Rating</div>
-    <div class="tab" onclick="openTab(this, 'h2h')">⚔️ Head-to-Head Record</div>
-    <div class="tab" onclick="openTab(this, 'records')">📜 Fun Record Book</div>
-    <div class="tab" onclick="openTab(this, 'seasons')">📅 Past Champions</div>
-    <div class="tab" onclick="openTab(this, 'drafts')">🎓 1st Round Draft Picks</div>
-    <div class="tab" onclick="openTab(this, 'aliases')">👤 Fix Manager Names</div>
+    <div class="tab active" data-tab="standings">🏆 All-Time Wins & Losses</div>
+    <div class="tab" data-tab="luck">🍀 Luck Rating</div>
+    <div class="tab" data-tab="h2h">⚔️ Head-to-Head Record</div>
+    <div class="tab" data-tab="records">📜 Fun Record Book</div>
+    <div class="tab" data-tab="seasons">📅 Past Champions</div>
+    <div class="tab" data-tab="drafts">🎓 1st Round Draft Picks</div>
+    <div class="tab" data-tab="aliases">👤 Fix Manager Names</div>
   </div>
 
   <div id="standings" class="panel active"></div>
@@ -78,174 +78,161 @@
 </div>
 
 <script>
-var DEFAULT_LEAGUE_ID = "152084";
-var DEFAULT_START_YEAR = 2014;
-var DEFAULT_END_YEAR = 2026;
 var API_BASE = "https://fleaflicker.com";
-
 var RAW_GAMES = [];
 var RAW_SEASONS = [];
 var RAW_DRAFTS = [];
 var ALIASES = {};
+
 try {
   ALIASES = JSON.parse(localStorage.getItem("ff_aliases_152084") || "{}");
 } catch (e) {
   ALIASES = {};
 }
 
-function openTab(el, tabId) {
-  var tabs = document.querySelectorAll(".tab");
-  var panels = document.querySelectorAll(".panel");
-  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("active");
-  for (var j = 0; j < panels.length; j++) panels[j].classList.remove("active");
-  el.classList.add("active");
-  document.getElementById(tabId).classList.add("active");
+function setStatus(msg) {
+  var el = document.getElementById("status");
+  if (el) el.innerText = msg;
 }
+
+// Wire up tabs safely
+var tabButtons = document.querySelectorAll(".tab");
+for (var t = 0; t < tabButtons.length; t++) {
+  tabButtons[t].addEventListener("click", function() {
+    var allTabs = document.querySelectorAll(".tab");
+    var allPanels = document.querySelectorAll(".panel");
+    for (var i = 0; i < allTabs.length; i++) allTabs[i].classList.remove("active");
+    for (var j = 0; j < allPanels.length; j++) allPanels[j].classList.remove("active");
+    this.classList.add("active");
+    var targetId = this.getAttribute("data-tab");
+    document.getElementById(targetId).classList.add("active");
+  });
+}
+
+document.getElementById("loadBtn").addEventListener("click", function() {
+  loadLeagueData();
+});
 
 function getManagerName(team) {
   if (!team) return "Unknown";
   var raw = team.name || "Unknown";
-  if (team.owners && team.owners.length > 0 && team.owners.displayName) {
-    raw = team.owners.displayName;
+  if (team.owners && team.owners.length > 0 && team.owners[0].displayName) {
+    raw = team.owners[0].displayName;
   }
   return ALIASES[raw] || raw;
 }
 
-async function fetchJson(endpoint) {
-  var directUrl = API_BASE + "/" + endpoint;
-  var proxies = [
-    directUrl,
-    "https://corsproxy.io?" + encodeURIComponent(directUrl),
-    "https://allorigins.win" + encodeURIComponent(directUrl)
-  ];
-
-  for (var i = 0; i < proxies.length; i++) {
-    try {
-      var res = await fetch(proxies[i]);
-      if (res.ok) {
-        var data = await res.json();
-        if (data) return data;
+async function fetchFleaflicker(endpoint) {
+  var target = API_BASE + "/" + endpoint;
+  // Method 1: AllOrigins JSON wrapper (most reliable from GitHub Pages)
+  try {
+    var r1 = await fetch("https://allorigins.win" + encodeURIComponent(target));
+    if (r1.ok) {
+      var wrapper = await r1.json();
+      if (wrapper && wrapper.contents) {
+        return JSON.parse(wrapper.contents);
       }
-    } catch (err) {
-      // Try next proxy
     }
-  }
+  } catch (e1) {}
+
+  // Method 2: CodeTabs CORS proxy fallback
+  try {
+    var r2 = await fetch("https://codetabs.com" + encodeURIComponent(target));
+    if (r2.ok) {
+      return await r2.json();
+    }
+  } catch (e2) {}
+
+  // Method 3: Direct fetch fallback
+  try {
+    var r3 = await fetch(target);
+    if (r3.ok) {
+      return await r3.json();
+    }
+  } catch (e3) {}
+
   return null;
 }
 
 async function loadLeagueData() {
-  var status = document.getElementById("status");
-  var leagueId = document.getElementById("leagueId").value.trim().replace(/\D/g, "") || DEFAULT_LEAGUE_ID;
-  var startYear = parseInt(document.getElementById("startYear").value, 10) || DEFAULT_START_YEAR;
-  var endYear = parseInt(document.getElementById("endYear").value, 10) || DEFAULT_END_YEAR;
+  var leagueId = document.getElementById("leagueId").value.trim().replace(/\D/g, "") || "152084";
+  var startYear = parseInt(document.getElementById("startYear").value, 10) || 2014;
+  var endYear = parseInt(document.getElementById("endYear").value, 10) || 2026;
 
-  status.innerText = "⏳ Connecting to Fleaflicker for League #" + leagueId + "...";
+  setStatus("⏳ Connecting to Fleaflicker for League #" + leagueId + "...");
   RAW_GAMES = [];
   RAW_SEASONS = [];
   RAW_DRAFTS = [];
 
   for (var yr = startYear; yr <= endYear; yr++) {
-    status.innerText = "⏳ Grabbing " + yr + " season (standings, all 18 weeks & draft)...";
-    var standings = await fetchJson("FetchLeagueStandings?sport=NFL&league_id=" + leagueId + "&season=" + yr);
+    setStatus("⏳ Loading " + yr + " season (" + (yr - startYear + 1) + " of " + (endYear - startYear + 1) + ")...");
+    var standings = await fetchFleaflicker("FetchLeagueStandings?sport=NFL&league_id=" + leagueId + "&season=" + yr);
     if (!standings || !standings.divisions) continue;
 
     if (standings.league && standings.league.name) {
-      document.getElementById("leagueTitle").innerText = "🏈 " + standings.league.name;
+      document.getElementById("leagueTitle").innerText = "🏈 " + standings.league.name + " (#" + leagueId + ")";
       document.title = standings.league.name + " — History Vault";
     }
 
     var teams = [];
-    standings.divisions.forEach(function(d) {
-      if (d.teams) {
-        d.teams.forEach(function(t) { teams.push(t); });
+    for (var d = 0; d < standings.divisions.length; d++) {
+      var div = standings.divisions[d];
+      if (div.teams) {
+        for (var tm = 0; tm < div.teams.length; tm++) {
+          teams.push(div.teams[tm]);
+        }
       }
-    });
+    }
     RAW_SEASONS.push({ year: yr, teams: teams });
 
-    var weekPromises = [];
-    for (var wk = 1; wk <= 18; wk++) {
-      (function(weekNum) {
-        weekPromises.push(
-          fetchJson("FetchLeagueScoreboard?sport=NFL&league_id=" + leagueId + "&season=" + yr + "&scoring_period=" + weekNum)
-            .then(function(sb) { return { wk: weekNum, sb: sb }; })
-        );
-      })(wk);
+    // Fetch weeks in small batches of 4 so proxies never get overwhelmed
+    for (var batchStart = 1; batchStart <= 18; batchStart += 4) {
+      var promises = [];
+      for (var wk = batchStart; wk < batchStart + 4 && wk <= 18; wk++) {
+        (function(weekNum) {
+          promises.push(
+            fetchFleaflicker("FetchLeagueScoreboard?sport=NFL&league_id=" + leagueId + "&season=" + yr + "&scoring_period=" + weekNum)
+              .then(function(sb) { return { wk: weekNum, sb: sb }; })
+          );
+        })(wk);
+      }
+      var results = await Promise.all(promises);
+      var anyGamesInBatch = false;
+      for (var r = 0; r < results.length; r++) {
+        var sb = results[r].sb;
+        if (sb && sb.games && sb.games.length > 0) {
+          anyGamesInBatch = true;
+          for (var gIdx = 0; gIdx < sb.games.length; gIdx++) {
+            var g = sb.games[gIdx];
+            var hScore = (g.homeScore && g.homeScore.score && g.homeScore.score.value) ? g.homeScore.score.value : 0;
+            var aScore = (g.awayScore && g.awayScore.score && g.awayScore.score.value) ? g.awayScore.score.value : 0;
+            if (g.home && g.away && (hScore > 0 || aScore > 0)) {
+              RAW_GAMES.push({
+                year: yr,
+                week: results[r].wk,
+                home: g.home,
+                away: g.away,
+                homePts: hScore,
+                awayPts: aScore
+              });
+            }
+          }
+        }
+      }
+      if (!anyGamesInBatch && batchStart > 14) break;
     }
 
-    var weekResults = await Promise.all(weekPromises);
-    weekResults.forEach(function(item) {
-      var sb = item.sb;
-      if (sb && sb.games) {
-        sb.games.forEach(function(g) {
-          var hScore = (g.homeScore && g.homeScore.score && g.homeScore.score.value) ? g.homeScore.score.value : 0;
-          var aScore = (g.awayScore && g.awayScore.score && g.awayScore.score.value) ? g.awayScore.score.value : 0;
-          if (g.home && g.away && (hScore > 0 || aScore > 0)) {
-            RAW_GAMES.push({
-              year: yr,
-              week: item.wk,
-              home: g.home,
-              away: g.away,
-              homePts: hScore,
-              awayPts: aScore
-            });
-          }
-        });
-      }
-    });
-
-    var draft = await fetchJson("FetchLeagueDraftBoard?sport=NFL&league_id=" + leagueId + "&season=" + yr);
+    var draft = await fetchFleaflicker("FetchLeagueDraftBoard?sport=NFL&league_id=" + leagueId + "&season=" + yr);
     if (draft && draft.rows) {
       RAW_DRAFTS.push({ year: yr, rows: draft.rows });
     }
+
+    // Update tables live after each year finishes!
+    renderAll();
   }
 
   if (RAW_SEASONS.length === 0) {
-    status.innerText = "❌ Fleaflicker returned no data for League #" + leagueId + ". Check that your league is set to Public in Fleaflicker Settings.";
+    setStatus("❌ Could not reach Fleaflicker right now. Wait 10 seconds and click Refresh Stats again.");
     return;
   }
 
-  status.innerText = "✅ Loaded " + RAW_SEASONS.length + " seasons and " + RAW_GAMES.length + " matchups for League #" + leagueId + "!";
-  renderAll();
-}
-
-function renderAll() {
-  renderStandingsAndLuck();
-  renderRecords();
-  renderH2H();
-  renderSeasons();
-  renderDrafts();
-  renderAliases();
-}
-
-function renderStandingsAndLuck() {
-  var stats = {};
-  function initMgr(m) {
-    if (!stats[m]) {
-      stats[m] = { name: m, w: 0, l: 0, t: 0, pf: 0, pa: 0, allPlayW: 0, allPlayL: 0, titles: 0, seasons: 0 };
-    }
-  }
-
-  RAW_SEASONS.forEach(function(s) {
-    s.teams.forEach(function(t) {
-      var m = getManagerName(t);
-      initMgr(m);
-      stats[m].seasons++;
-      if (t.rankOverall === 1) stats[m].titles++;
-    });
-  });
-
-  var weekBuckets = {};
-  RAW_GAMES.forEach(function(g) {
-    var key = g.year + "-" + g.week;
-    if (!weekBuckets[key]) weekBuckets[key] = [];
-    var hMgr = getManagerName(g.home);
-    var aMgr = getManagerName(g.away);
-    initMgr(hMgr);
-    initMgr(aMgr);
-
-    stats[hMgr].pf += g.homePts;
-    stats[hMgr].pa += g.awayPts;
-    stats[aMgr].pf += g.awayPts;
-    stats[aMgr].pa += g.homePts;
-
-    if (g.homePts > g.awayPts) { stats[hMgr].w++; stats[aMgr].l++; }
