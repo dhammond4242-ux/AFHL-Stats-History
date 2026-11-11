@@ -56,7 +56,7 @@
     </div>
   </header>
 
-  <div id="status">⏳ Page loaded! Connecting to Fleaflicker now...</div>
+  <div id="status">⏳ Page loaded! Starting connection to Fleaflicker...</div>
 
   <div class="tabs">
     <div class="tab active" data-tab="standings">🏆 All-Time Wins & Losses</div>
@@ -95,7 +95,6 @@ function setStatus(msg) {
   if (el) el.innerText = msg;
 }
 
-// Wire up tabs safely
 var tabButtons = document.querySelectorAll(".tab");
 for (var t = 0; t < tabButtons.length; t++) {
   tabButtons[t].addEventListener("click", function() {
@@ -122,35 +121,36 @@ function getManagerName(team) {
   return ALIASES[raw] || raw;
 }
 
+async function fetchWithTimeout(url, ms) {
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, ms);
+  try {
+    var res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (e) {
+    clearTimeout(timer);
+    return null;
+  }
+}
+
 async function fetchFleaflicker(endpoint) {
   var target = API_BASE + "/" + endpoint;
-  // Method 1: AllOrigins JSON wrapper (most reliable from GitHub Pages)
-  try {
-    var r1 = await fetch("https://allorigins.win" + encodeURIComponent(target));
-    if (r1.ok) {
-      var wrapper = await r1.json();
-      if (wrapper && wrapper.contents) {
-        return JSON.parse(wrapper.contents);
-      }
-    }
-  } catch (e1) {}
+  var proxies = [
+    "https://corsproxy.io" + encodeURIComponent(target),
+    "https://allorigins.win" + encodeURIComponent(target),
+    target
+  ];
 
-  // Method 2: CodeTabs CORS proxy fallback
-  try {
-    var r2 = await fetch("https://codetabs.com" + encodeURIComponent(target));
-    if (r2.ok) {
-      return await r2.json();
+  for (var i = 0; i < proxies.length; i++) {
+    var res = await fetchWithTimeout(proxies[i], 4500);
+    if (res && res.ok) {
+      try {
+        var data = await res.json();
+        if (data) return data;
+      } catch (e) {}
     }
-  } catch (e2) {}
-
-  // Method 3: Direct fetch fallback
-  try {
-    var r3 = await fetch(target);
-    if (r3.ok) {
-      return await r3.json();
-    }
-  } catch (e3) {}
-
+  }
   return null;
 }
 
@@ -185,7 +185,6 @@ async function loadLeagueData() {
     }
     RAW_SEASONS.push({ year: yr, teams: teams });
 
-    // Fetch weeks in small batches of 4 so proxies never get overwhelmed
     for (var batchStart = 1; batchStart <= 18; batchStart += 4) {
       var promises = [];
       for (var wk = batchStart; wk < batchStart + 4 && wk <= 18; wk++) {
@@ -227,12 +226,18 @@ async function loadLeagueData() {
       RAW_DRAFTS.push({ year: yr, rows: draft.rows });
     }
 
-    // Update tables live after each year finishes!
     renderAll();
   }
 
   if (RAW_SEASONS.length === 0) {
-    setStatus("❌ Could not reach Fleaflicker right now. Wait 10 seconds and click Refresh Stats again.");
+    setStatus("❌ Proxy timed out reaching Fleaflicker. Let me know and we will bake your data directly into the file!");
     return;
   }
 
+  setStatus("✅ Finished! Loaded " + RAW_SEASONS.length + " seasons and " + RAW_GAMES.length + " matchups for League of Gentlemen!");
+  renderAll();
+}
+
+function renderAll() {
+  renderStandingsAndLuck();
+  renderRecords();
