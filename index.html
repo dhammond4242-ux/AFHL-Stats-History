@@ -32,16 +32,19 @@
   .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-weight: 700; }
   .win { background: rgba(34,197,94,0.2); color: var(--win); }
   .loss { background: rgba(239,68,68,0.2); color: var(--loss); }
-  .alias-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
-  input { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .banner { background: rgba(56,189,248,0.12); border: 1px solid var(--accent); padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-size: 0.9rem; }
 </style>
 </head>
 <body>
 <div class="container">
   <header>
-    <h1 id="leagueTitle">🏈 League History Vault</h1>
-    <div id="subtitle" style="color:var(--muted); font-size:0.95rem;">Loading compiled league history...</div>
+    <h1 id="leagueTitle">🏈 League of Gentlemen (#152084)</h1>
+    <div id="subtitle" style="color:var(--muted); font-size:0.95rem;">Status: Checking for data.json...</div>
   </header>
+
+  <div id="setupBanner" class="banner">
+    <strong>✅ Website Engine Working!</strong> Right now you are viewing preview demo data because <code>data.json</code> has not been generated in your GitHub Actions tab yet. Once you run <strong>Sync Fleaflicker Stats</strong> in GitHub Actions, your real 2014–2026 League #152084 numbers will automatically replace these!
+  </div>
 
   <div class="tabs">
     <div class="tab active" onclick="openTab(this, 'standings')">🏆 All-Time Wins & Losses</div>
@@ -49,8 +52,6 @@
     <div class="tab" onclick="openTab(this, 'h2h')">⚔️ Head-to-Head Record</div>
     <div class="tab" onclick="openTab(this, 'records')">📜 Fun Record Book</div>
     <div class="tab" onclick="openTab(this, 'seasons')">📅 Past Champions</div>
-    <div class="tab" onclick="openTab(this, 'drafts')">🎓 1st Round Draft Picks</div>
-    <div class="tab" onclick="openTab(this, 'aliases')">👤 Fix Manager Names</div>
   </div>
 
   <div id="standings" class="panel active"></div>
@@ -58,13 +59,25 @@
   <div id="h2h" class="panel"></div>
   <div id="records" class="panel"></div>
   <div id="seasons" class="panel"></div>
-  <div id="drafts" class="panel"></div>
-  <div id="aliases" class="panel"></div>
 </div>
 
 <script>
-let DATA = null;
-let ALIASES = JSON.parse(localStorage.getItem("ff_aliases_152084") || "{}");
+const DEMO_DATA = {
+  leagueName: "League of Gentlemen (Demo Preview)",
+  leagueId: 152084,
+  seasons: [
+    { year: 2025, teams: [
+      { owner: "Chris30", name: "Gridiron Kings", rank: 1, pf: 1685.4 },
+      { owner: "Tmac206", name: "Seattle Storm", rank: 2, pf: 1612.8 },
+      { owner: "MaddenCurse99", name: "Sunday Scaries", rank: 3, pf: 1540.2 }
+    ]}
+  ],
+  games: [
+    { year: 2025, week: 1, home: "Chris30", away: "Tmac206", homePts: 142.5, awayPts: 118.2 },
+    { year: 2025, week: 1, home: "MaddenCurse99", away: "Chris30", homePts: 98.4, awayPts: 131.0 },
+    { year: 2025, week: 2, home: "Tmac206", away: "MaddenCurse99", homePts: 156.8, awayPts: 154.9 }
+  ]
+};
 
 function openTab(el, id) {
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
@@ -73,126 +86,97 @@ function openTab(el, id) {
   document.getElementById(id).classList.add("active");
 }
 
-function mgr(name) {
-  return ALIASES[name] || name;
-}
+function renderAll(DATA, isLive) {
+  document.getElementById("leagueTitle").innerText = "🏈 " + DATA.leagueName + " (#" + DATA.leagueId + ")";
+  if (isLive) {
+    document.getElementById("subtitle").innerText = "✅ LIVE DATA: " + DATA.seasons.length + " Seasons • " + DATA.games.length + " Total Matchups";
+    document.getElementById("setupBanner").style.display = "none";
+  } else {
+    document.getElementById("subtitle").innerText = "⚠️ Showing Demo Preview (Run GitHub Actions to load your real 2014–2026 Fleaflicker stats)";
+  }
 
-fetch("data.json?v=" + Date.now())
-  .then(r => r.json())
-  .then(json => {
-    DATA = json;
-    document.getElementById("leagueTitle").innerText = "🏈 " + json.leagueName + " (#" + json.leagueId + ")";
-    document.getElementById("subtitle").innerText = json.seasons.length + " Seasons • " + json.games.length + " Total Matchups • Auto-Synced from Fleaflicker";
-    renderAll();
-  })
-  .catch(() => {
-    document.getElementById("subtitle").innerText = "❌ Could not find data.json yet. Run the 'Sync Fleaflicker Stats' workflow in your GitHub Actions tab first!";
-  });
-
-function renderAll() {
-  renderStandingsAndLuck();
-  renderH2H();
-  renderRecords();
-  renderSeasons();
-  renderDrafts();
-  renderAliases();
-}
-
-function renderStandingsAndLuck() {
   const stats = {};
-  const init = m => { if (!stats[m]) stats[m] = { name: m, w: 0, l: 0, t: 0, pf: 0, pa: 0, apW: 0, apL: 0, titles: 0, seasons: 0 }; };
+  const init = m => { if (!stats[m]) stats[m] = { name: m, w: 0, l: 0, pf: 0, apW: 0, apL: 0, titles: 0, seasons: 0 }; };
 
-  DATA.seasons.forEach(s => {
-    s.teams.forEach(tm => {
-      const m = mgr(tm.owner);
-      init(m);
-      stats[m].seasons++;
-      if (tm.rank === 1) stats[m].titles++;
-    });
-  });
+  DATA.seasons.forEach(s => s.teams.forEach(tm => {
+    init(tm.owner);
+    stats[tm.owner].seasons++;
+    if (tm.rank === 1) stats[tm.owner].titles++;
+  }));
 
   const weeks = {};
   DATA.games.forEach(g => {
     const k = g.year + "-" + g.week;
     if (!weeks[k]) weeks[k] = [];
-    const h = mgr(g.home), a = mgr(g.away);
-    init(h); init(a);
-    stats[h].pf += g.homePts; stats[h].pa += g.awayPts;
-    stats[a].pf += g.awayPts; stats[a].pa += g.homePts;
-    if (g.homePts > g.awayPts) { stats[h].w++; stats[a].l++; }
-    else if (g.awayPts > g.homePts) { stats[a].w++; stats[h].l++; }
-    else { stats[h].t++; stats[a].t++; }
-    weeks[k].push({ m: h, p: g.homePts }, { m: a, p: g.awayPts });
+    init(g.home); init(g.away);
+    stats[g.home].pf += g.homePts; stats[g.away].pf += g.awayPts;
+    if (g.homePts > g.awayPts) { stats[g.home].w++; stats[g.away].l++; }
+    else if (g.awayPts > g.homePts) { stats[g.away].w++; stats[g.home].l++; }
+    weeks[k].push({ m: g.home, p: g.homePts }, { m: g.away, p: g.awayPts });
   });
 
-  Object.values(weeks).forEach(list => {
-    list.forEach(x => list.forEach(y => {
-      if (x.m !== y.m) {
-        if (x.p > y.p) stats[x.m].apW++;
-        else if (x.p < y.p) stats[x.m].apL++;
-      }
-    }));
-  });
+  Object.values(weeks).forEach(list => list.forEach(x => list.forEach(y => {
+    if (x.m !== y.m) { if (x.p > y.p) stats[x.m].apW++; else if (x.p < y.p) stats[x.m].apL++; }
+  })));
 
   const rows = Object.values(stats).sort((a, b) => (b.w / (b.w + b.l || 1)) - (a.w / (a.w + a.l || 1)));
 
-  let html = "<h2>All-Time Wins, Losses & Points</h2><table><thead><tr><th>Manager</th><th>Seasons</th><th>Titles</th><th>Wins</th><th>Losses</th><th>Win %</th><th>Total Points</th><th>Avg PPG</th></tr></thead><tbody>";
+  let html = "<h2>All-Time Wins & Losses</h2><table><thead><tr><th>Manager</th><th>Seasons</th><th>Titles</th><th>Wins</th><th>Losses</th><th>Win %</th><th>Total Points</th></tr></thead><tbody>";
   rows.forEach(r => {
-    const gp = r.w + r.l + r.t || 1;
+    const gp = r.w + r.l || 1;
     html += `<tr><td><strong>${r.name}</strong></td><td>${r.seasons}</td><td>${r.titles ? "🏆".repeat(r.titles) : "-"}</td>
       <td><span class="badge win">${r.w}</span></td><td><span class="badge loss">${r.l}</span></td>
-      <td>${((r.w / gp) * 100).toFixed(1)}%</td><td>${r.pf.toFixed(1)}</td><td>${(r.pf / gp).toFixed(1)}</td></tr>`;
+      <td>${((r.w / gp) * 100).toFixed(1)}%</td><td>${r.pf.toFixed(1)}</td></tr>`;
   });
   document.getElementById("standings").innerHTML = html + "</tbody></table>";
 
   const luck = rows.map(r => {
-    const act = r.w / (r.w + r.l || 1);
-    const ap = r.apW / (r.apW + r.apL || 1);
+    const act = r.w / (r.w + r.l || 1), ap = r.apW / (r.apW + r.apL || 1);
     return { ...r, act, ap, score: (act - ap) * 100 };
   }).sort((a, b) => b.score - a.score);
 
-  let lHtml = "<h2>Luck Rating (Schedule Luck)</h2><p style='color:var(--muted);'>Green (+%) means easy schedule luck. Red (-%) means tough schedule luck.</p><table><thead><tr><th>Manager</th><th>Real Win %</th><th>All-Play Record</th><th>Luck Rating</th></tr></thead><tbody>";
+  let lHtml = "<h2>Luck Rating</h2><table><thead><tr><th>Manager</th><th>Real Win %</th><th>All-Play Record</th><th>Luck Rating</th></tr></thead><tbody>";
   luck.forEach(r => {
     const badge = r.score >= 0 ? `<span class="badge win">+${r.score.toFixed(1)}% Lucky</span>` : `<span class="badge loss">${r.score.toFixed(1)}% Unlucky</span>`;
-    lHtml += `<tr><td><strong>${r.name}</strong></td><td>${(r.act * 100).toFixed(1)}%</td><td>${r.apW}-${r.apL} (${(r.ap * 100).toFixed(1)}%)</td><td>${badge}</td></tr>`;
+    lHtml += `<tr><td><strong>${r.name}</strong></td><td>${(r.act * 100).toFixed(1)}%</td><td>${r.apW}-${r.apL}</td><td>${badge}</td></tr>`;
   });
   document.getElementById("luck").innerHTML = lHtml + "</tbody></table>";
-}
 
-function renderH2H() {
-  const managers = [...new Set(DATA.games.flatMap(g => [mgr(g.home), mgr(g.away)]))].sort();
+  const managers = [...new Set(DATA.games.flatMap(g => [g.home, g.away]))].sort();
   const mat = {};
   managers.forEach(a => { mat[a] = {}; managers.forEach(b => mat[a][b] = { w: 0, l: 0 }); });
   DATA.games.forEach(g => {
-    const h = mgr(g.home), a = mgr(g.away);
-    if (g.homePts > g.awayPts) { mat[h][a].w++; mat[a][h].l++; }
-    else if (g.awayPts > g.homePts) { mat[a][h].w++; mat[h][a].l++; }
+    if (g.homePts > g.awayPts) { mat[g.home][g.away].w++; mat[g.away][g.home].l++; }
+    else if (g.awayPts > g.homePts) { mat[g.away][g.home].w++; mat[g.home][g.away].l++; }
   });
-  let html = "<h2>Head-to-Head Record</h2><table><thead><tr><th>Manager</th>" + managers.map(m => `<th>${m}</th>`).join("") + "</tr></thead><tbody>";
+  let hHtml = "<h2>Head-to-Head Record</h2><table><thead><tr><th>Manager</th>" + managers.map(m => `<th>${m}</th>`).join("") + "</tr></thead><tbody>";
   managers.forEach(a => {
-    html += `<tr><td><strong>${a}</strong></td>` + managers.map(b => {
-      if (a === b) return "<td style='color:var(--muted)'>—</td>";
+    hHtml += `<tr><td><strong>${a}</strong></td>` + managers.map(b => {
+      if (a === b) return "<td>—</td>";
       const r = mat[a][b];
-      const cls = r.w > r.l ? "win" : (r.w < r.l ? "loss" : "");
-      return `<td><span class="badge ${cls}">${r.w}-${r.l}</span></td>`;
+      return `<td><span class="badge ${r.w > r.l ? "win" : (r.w < r.l ? "loss" : "")}">${r.w}-${r.l}</span></td>`;
     }).join("") + "</tr>";
   });
-  document.getElementById("h2h").innerHTML = html + "</tbody></table>";
+  document.getElementById("h2h").innerHTML = hHtml + "</tbody></table>";
+
+  let hi = { pts: -1 }, lo = { pts: 99999 };
+  DATA.games.forEach(g => {
+    if (g.homePts > hi.pts) hi = { pts: g.homePts, m: g.home, y: g.year, w: g.week };
+    if (g.awayPts > hi.pts) hi = { pts: g.awayPts, m: g.away, y: g.year, w: g.week };
+    if (g.homePts < lo.pts) lo = { pts: g.homePts, m: g.home, y: g.year, w: g.week };
+    if (g.awayPts < lo.pts) lo = { pts: g.awayPts, m: g.away, y: g.year, w: g.week };
+  });
+  document.getElementById("records").innerHTML = `<h2>Fun Record Book</h2><div class="grid">
+    <div class="stat-card"><h3>🚀 Highest Score</h3><div class="val">${hi.pts.toFixed(2)} pts</div><div class="sub">${hi.m} (${hi.y} Wk ${hi.w})</div></div>
+    <div class="stat-card"><h3>💩 Lowest Score</h3><div class="val">${lo.pts.toFixed(2)} pts</div><div class="sub">${lo.m} (${lo.y} Wk ${lo.w})</div></div>
+  </div>`;
+
+  let sHtml = "<h2>Past Champions</h2><table><thead><tr><th>Year</th><th>Champion 🏆</th><th>Most Points</th></tr></thead><tbody>";
+  [...DATA.seasons].reverse().forEach(s => {
+    const r = [...s.teams].sort((a, b) => a.rank - b.rank);
+    const p = [...s.teams].sort((a, b) => b.pf - a.pf);
+    sHtml += `<tr><td><strong>${s.year}</strong></td><td>${r ? r.owner : "N/A"}</td><td>${p ? p.owner + " (" + p.pf.toFixed(1) + ")" : "N/A"}</td></tr>`;
+  });
+  document.getElementById("seasons").innerHTML = sHtml + "</tbody></table>";
 }
 
-function renderRecords() {
-  let hi = { pts: -1 }, lo = { pts: 99999 }, blow = { d: -1 }, close = { d: 99999 }, shoot = { t: -1 };
-  DATA.games.forEach(g => {
-    const h = mgr(g.home), a = mgr(g.away);
-    if (g.homePts > hi.pts) hi = { pts: g.homePts, m: h, o: a, y: g.year, w: g.week };
-    if (g.awayPts > hi.pts) hi = { pts: g.awayPts, m: a, o: h, y: g.year, w: g.week };
-    if (g.homePts < lo.pts) lo = { pts: g.homePts, m: h, o: a, y: g.year, w: g.week };
-    if (g.awayPts < lo.pts) lo = { pts: g.awayPts, m: a, o: h, y: g.year, w: g.week };
-    const d = Math.abs(g.homePts - g.awayPts);
-    const win = g.homePts > g.awayPts ? h : a, los = g.homePts > g.awayPts ? a : h;
-    const sc = `${Math.max(g.homePts, g.awayPts).toFixed(2)} - ${Math.min(g.homePts, g.awayPts).toFixed(2)}`;
-    if (d > blow.d) blow = { d, win, los, sc, y: g.year, w: g.week };
-    if (d > 0 && d < close.d) close = { d, win, los, sc, y: g.year, w: g.week };
-    if (g.homePts + g.awayPts > shoot.t) shoot = { t: g.homePts + g.awayPts, h, a, sc: `${g.homePts.toFixed(2)} - ${g.awayPts.toFixed(2)}`, y: g.year, w: g.week };
-  });
-  document.getElementById("records").innerHTML = `<h2>All-Time League Record Book</h2><div class="grid">
