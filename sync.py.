@@ -20,8 +20,10 @@ def get_owner(team_obj):
     if not isinstance(team_obj, dict):
         return "Unknown"
     owners = team_obj.get("owners")
-    if isinstance(owners, list) and len(owners) > 0:
-        return owners[0].get("displayName") or team_obj.get("name", "Unknown")
+    if isinstance(owners, list):
+        first_owner = next(iter(owners), None)
+        if isinstance(first_owner, dict) and first_owner.get("displayName"):
+            return first_owner.get("displayName")
     return team_obj.get("name", "Unknown")
 
 seasons = []
@@ -32,53 +34,59 @@ league_name = f"League #{LEAGUE_ID}"
 for yr in range(START_YEAR, END_YEAR + 1):
     print(f"Fetching {yr}...")
     st = get_json(f"FetchLeagueStandings?sport=NFL&league_id={LEAGUE_ID}&season={yr}")
-    if not st or "divisions" not in st:
+    if not isinstance(st, dict) or "divisions" not in st:
         continue
 
-    if st.get("league", {}).get("name"):
-        league_name = st["league"]["name"]
+    if isinstance(st.get("league"), dict) and st.get("league").get("name"):
+        league_name = st.get("league").get("name")
 
     teams = []
     for div in st.get("divisions", []):
         for t in div.get("teams", []):
+            pf_obj = t.get("pointsFor") if isinstance(t.get("pointsFor"), dict) else {}
             teams.append({
                 "id": t.get("id"),
                 "name": t.get("name", "Unknown"),
                 "owner": get_owner(t),
                 "rank": t.get("rankOverall", 99),
-                "pf": t.get("pointsFor", {}).get("value", 0)
+                "pf": pf_obj.get("value", 0)
             })
     seasons.append({"year": yr, "teams": teams})
 
     for wk in range(1, 19):
         sb = get_json(f"FetchLeagueScoreboard?sport=NFL&league_id={LEAGUE_ID}&season={yr}&scoring_period={wk}")
-        if not sb or not sb.get("games"):
+        if not isinstance(sb, dict) or not sb.get("games"):
             break
-        for g in sb["games"]:
-            h_pts = g.get("homeScore", {}).get("score", {}).get("value", 0)
-            a_pts = g.get("awayScore", {}).get("score", {}).get("value", 0)
+        for g in sb.get("games", []):
+            h_score_obj = g.get("homeScore") if isinstance(g.get("homeScore"), dict) else {}
+            a_score_obj = g.get("awayScore") if isinstance(g.get("awayScore"), dict) else {}
+            h_pts = h_score_obj.get("score", {}).get("value", 0) if isinstance(h_score_obj.get("score"), dict) else 0
+            a_pts = a_score_obj.get("score", {}).get("value", 0) if isinstance(a_score_obj.get("score"), dict) else 0
             if g.get("home") and g.get("away") and (h_pts > 0 or a_pts > 0):
                 games.append({
                     "year": yr,
                     "week": wk,
-                    "home": get_owner(g["home"]),
-                    "away": get_owner(g["away"]),
+                    "home": get_owner(g.get("home")),
+                    "away": get_owner(g.get("away")),
                     "homePts": h_pts,
                     "awayPts": a_pts
                 })
 
     dr = get_json(f"FetchLeagueDraftBoard?sport=NFL&league_id={LEAGUE_ID}&season={yr}")
-    if dr and isinstance(dr.get("rows"), list) and len(dr["rows"]) > 0:
-        first_round = []
-        for idx, cell in enumerate(dr["rows"][0].get("cells", [])):
-            p = cell.get("player", {}).get("proPlayer", {})
-            first_round.append({
-                "pick": f"1.{idx + 1}",
-                "manager": get_owner(cell.get("team", {})),
-                "player": p.get("nameFull", "Unknown"),
-                "pos": p.get("position", "")
-            })
-        drafts.append({"year": yr, "picks": first_round})
+    if isinstance(dr, dict) and isinstance(dr.get("rows"), list):
+        first_row = next(iter(dr.get("rows")), None)
+        if isinstance(first_row, dict):
+            first_round = []
+            for idx, cell in enumerate(first_row.get("cells", [])):
+                player_obj = cell.get("player") if isinstance(cell.get("player"), dict) else {}
+                pro_obj = player_obj.get("proPlayer") if isinstance(player_obj.get("proPlayer"), dict) else {}
+                first_round.append({
+                    "pick": f"1.{idx + 1}",
+                    "manager": get_owner(cell.get("team")),
+                    "player": pro_obj.get("nameFull", "Unknown"),
+                    "pos": pro_obj.get("position", "")
+                })
+            drafts.append({"year": yr, "picks": first_round})
 
 output = {
     "leagueName": league_name,
@@ -91,4 +99,4 @@ output = {
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(output, f, indent=2)
 
-print(f"Saved {len(seasons)} seasons and {len(games)} games!")
+print(f"SUCCESS: Saved {len(seasons)} seasons and {len(games)} games!")
