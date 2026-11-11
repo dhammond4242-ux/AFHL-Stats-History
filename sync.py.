@@ -16,6 +16,14 @@ def get_json(endpoint):
         print(f"Skipping {endpoint}: {e}")
         return None
 
+def get_owner(team_obj):
+    if not isinstance(team_obj, dict):
+        return "Unknown"
+    owners = team_obj.get("owners")
+    if isinstance(owners, list) and len(owners) > 0:
+        return owners[0].get("displayName") or team_obj.get("name", "Unknown")
+    return team_obj.get("name", "Unknown")
+
 seasons = []
 games = []
 drafts = []
@@ -33,11 +41,10 @@ for yr in range(START_YEAR, END_YEAR + 1):
     teams = []
     for div in st.get("divisions", []):
         for t in div.get("teams", []):
-            owner = t["owners"][0]["displayName"] if t.get("owners") else t.get("name", "Unknown")
             teams.append({
                 "id": t.get("id"),
                 "name": t.get("name", "Unknown"),
-                "owner": owner,
+                "owner": get_owner(t),
                 "rank": t.get("rankOverall", 99),
                 "pf": t.get("pointsFor", {}).get("value", 0)
             })
@@ -51,27 +58,23 @@ for yr in range(START_YEAR, END_YEAR + 1):
             h_pts = g.get("homeScore", {}).get("score", {}).get("value", 0)
             a_pts = g.get("awayScore", {}).get("score", {}).get("value", 0)
             if g.get("home") and g.get("away") and (h_pts > 0 or a_pts > 0):
-                h_owner = g["home"]["owners"][0]["displayName"] if g["home"].get("owners") else g["home"].get("name", "Unknown")
-                a_owner = g["away"]["owners"][0]["displayName"] if g["away"].get("owners") else g["away"].get("name", "Unknown")
                 games.append({
                     "year": yr,
                     "week": wk,
-                    "home": h_owner,
-                    "away": a_owner,
+                    "home": get_owner(g["home"]),
+                    "away": get_owner(g["away"]),
                     "homePts": h_pts,
                     "awayPts": a_pts
                 })
 
     dr = get_json(f"FetchLeagueDraftBoard?sport=NFL&league_id={LEAGUE_ID}&season={yr}")
-    if dr and dr.get("rows"):
+    if dr and isinstance(dr.get("rows"), list) and len(dr["rows"]) > 0:
         first_round = []
         for idx, cell in enumerate(dr["rows"][0].get("cells", [])):
             p = cell.get("player", {}).get("proPlayer", {})
-            tm = cell.get("team", {})
-            mgr = tm["owners"][0]["displayName"] if tm.get("owners") else tm.get("name", "Unknown")
             first_round.append({
                 "pick": f"1.{idx + 1}",
-                "manager": mgr,
+                "manager": get_owner(cell.get("team", {})),
                 "player": p.get("nameFull", "Unknown"),
                 "pos": p.get("position", "")
             })
